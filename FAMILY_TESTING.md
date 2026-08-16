@@ -1,36 +1,62 @@
-# PantryCue Family Beta Testing
+# PantryCue 0.6.0 Family Test
 
-Thank you for testing PantryCue. The goal is not to see whether you can figure the app out. The goal is to find anything that makes cooking harder than it should be.
+Please test with real food you have at home. The goal is to find anything that makes choosing or cooking dinner harder than it should be.
 
-## Five-minute test
+## Priority regression: gluten-free spaghetti
 
-- [ ] Open PantryCue on your phone.
-- [ ] Complete the short setup.
-- [ ] Add at least five foods you actually have.
-- [ ] Add one item by voice if your browser supports it.
-- [ ] Try the barcode scanner or the manual barcode fallback.
-- [ ] Open a recipe under “Make it now” or “Almost there.”
-- [ ] Look at the ingredient status and substitutions.
-- [ ] Add missing ingredients to the grocery list.
-- [ ] Check off a grocery item.
-- [ ] Move a grocery item into the pantry, fridge, or freezer.
+- [ ] In Settings, select **Gluten-free**.
+- [ ] Add `gluten-free spaghetti`, `gluten-free pasta sauce`, `ground beef`, `garlic`, and `Italian seasoning`.
+- [ ] Confirm **Spaghetti with Meat Sauce** appears under **Make it now**.
+- [ ] Open it and confirm the dietary card says it was adjusted for gluten-free cooking.
+- [ ] Confirm the ingredients say **Gluten-free spaghetti** and **Gluten-free marinara sauce**.
+- [ ] Start Cooking Mode and confirm it has detailed setup, heat, timing, 160°F beef guidance, draining, sauce, and serving steps.
+
+## Barcode test
+
+- [ ] Tap **Barcode** and allow camera access.
+- [ ] Hold a UPC or EAN barcode inside the frame until it is detected.
+- [ ] If live scanning is difficult, use **Scan a barcode photo**.
+- [ ] Test manual number entry as the final fallback.
+- [ ] Confirm a product with “gluten-free,” “dairy-free,” or “vegan” on its name keeps that label after it is added.
+- [ ] Report the product, phone, browser, and whether the failure was camera scanning or product lookup.
+
+## Cooking Mode test
+
+- [ ] Open the Ingredients drawer from Cooking Mode.
+- [ ] Confirm every ingredient name and amount is visible on the light cards.
+- [ ] Change servings before starting and confirm Cooking Mode uses the selected serving count.
+- [ ] Move through every step and confirm the screen remains readable without clipped text.
+- [ ] Check that oven recipes give a temperature and rack position.
+- [ ] Check that meat and fish recipes give a doneness temperature where appropriate.
+- [ ] Flag any direction that assumes equipment you do not have or leaves you unsure what heat to use.
+
+## Photo + confirm test
+
+- [ ] Tap **Photo + confirm** and take or choose a kitchen photo.
+- [ ] Confirm the photo preview appears.
+- [ ] Enter the visible foods, including dietary labels, and add them.
+- [ ] Confirm the foods appear in the selected pantry, fridge, or freezer area.
+
+Automatic food recognition is not enabled yet. This is an explicit confirmation-first beta, not a simulated recognition result.
+
+## General five-minute test
+
+- [ ] Add at least five foods by typing.
+- [ ] Add one food by voice if supported.
+- [ ] Compare **Make it now** and **Almost there** results.
+- [ ] Search for a meal or ingredient in Recipes.
 - [ ] Save a recipe.
-- [ ] Start cooking mode and move through the steps.
-- [ ] Refresh the page and make sure your kitchen is still there.
+- [ ] Add missing ingredients to Grocery.
+- [ ] Check off a grocery item and move it into the kitchen.
+- [ ] Mark an ingredient **Use soon** and review prioritized meals.
+- [ ] Refresh the page and confirm your data remains.
 
-## Please report these things
+## Please include in every bug report
 
-1. What was confusing in the first minute?
-2. What did you expect to tap but could not?
-3. Did PantryCue understand the food names you entered?
-4. Were the recipe suggestions useful?
-5. Did any substitution seem wrong or weird?
-6. Were buttons and text comfortable to use on your phone?
-7. Did anything feel cluttered?
-8. What feature would make you use the app again next week?
-9. What phone and browser were you using?
-10. If something broke, what were you doing immediately before it happened?
-
-## Photo scan beta
-
-Photo capture is included, but automatic food recognition is not enabled in this build. The confirmation screen is intentional and will remain even after automatic recognition is added.
+1. Phone model and operating system
+2. Browser and browser version
+3. Dietary preferences selected
+4. Exact food names entered
+5. What you expected
+6. What happened instead
+7. A screenshot if the problem is visual

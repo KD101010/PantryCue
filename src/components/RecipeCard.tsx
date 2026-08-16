@@ -1,4 +1,5 @@
 import type { RecipeMatch } from '../types';
+import { dietLabel } from '../lib/dietary';
 import { matchLabel } from '../lib/matching';
 import { Icon } from './Icon';
 
@@ -31,6 +32,7 @@ export function RecipeCard({
               {status}
             </span>
             {match.usesSoon > 0 && <span className="use-soon-pill">Uses {match.usesSoon} soon</span>}
+            {match.recipe.adaptedFor?.slice(0, 1).map((diet) => <span className="diet-fit-pill" key={diet}>{dietLabel(diet)} version</span>)}
           </div>
           <h3>{match.recipe.title}</h3>
           <p>{match.recipe.summary}</p>

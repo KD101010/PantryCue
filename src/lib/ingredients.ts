@@ -12,34 +12,67 @@ function clean(value: string): string {
     .trim();
 }
 
+const dietaryQualifierBase = /\b(pasta|spaghetti|fettuccine|macaroni|noodles?|lasagna|bread|buns?|bagels?|tortillas?|pita|naan|flour|breadcrumbs?|panko|crackers?|cereal|oats?|granola|soy sauce|teriyaki sauce|worcestershire sauce|taco seasoning|enchilada sauce|biscuits?|milk|buttermilk|cream|butter|cheese|cheddar|mozzarella|parmesan|ricotta|yogurt|sour cream|ranch|caesar|alfredo|mayonnaise|mayo)\b/;
+
+function withoutDietaryQualifier(value: string): string {
+  if (/^(certified\s+)?(gluten[ -]?free|gf)\s+(pasta\s+)?sauce$/.test(value)) return 'pasta sauce';
+  const stripped = value
+    .replace(/\b(certified\s+)?(gluten[ -]?free|gf|dairy[ -]?free|non[ -]?dairy|vegan|plant[ -]?based)\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return dietaryQualifierBase.test(stripped) ? stripped : value;
+}
+
 const aliasEntries = Object.entries(ingredientAliases)
   .map(([alias, canonical]) => [clean(alias), canonical] as const)
   .sort((a, b) => b[0].length - a[0].length);
+const normalizationCache = new Map<string, string>();
+
+function rememberNormalization(input: string, result: string): string {
+  if (normalizationCache.size >= 2000) normalizationCache.clear();
+  normalizationCache.set(input, result);
+  return result;
+}
 
 export function normalizeIngredient(value: string): string {
   const normalized = clean(value);
   if (!normalized) return '';
+  const cached = normalizationCache.get(normalized);
+  if (cached !== undefined) return cached;
 
-  const exact = ingredientAliases[normalized];
-  if (exact) return exact;
+  const matchable = withoutDietaryQualifier(normalized);
+
+  const exact = ingredientAliases[matchable];
+  if (exact) return rememberNormalization(normalized, exact);
 
   for (const [alias, canonical] of aliasEntries) {
-    if (normalized === alias || normalized.includes(` ${alias} `) || normalized.startsWith(`${alias} `) || normalized.endsWith(` ${alias}`)) {
-      return canonical;
+    if (matchable === alias || matchable.includes(` ${alias} `) || matchable.startsWith(`${alias} `) || matchable.endsWith(` ${alias}`)) {
+      return rememberNormalization(normalized, canonical);
     }
   }
 
   for (const [canonical, keywords] of categoryKeywords) {
-    if (keywords.some((keyword) => normalized.includes(clean(keyword)))) return canonical;
+    if (keywords.some((keyword) => matchable.includes(clean(keyword)))) return rememberNormalization(normalized, canonical);
   }
 
-  const catalogExact = ingredientCatalog.find((ingredient) => clean(ingredient) === normalized);
-  if (catalogExact) return catalogExact;
+  const catalogExact = ingredientCatalog.find((ingredient) => clean(ingredient) === matchable);
+  if (catalogExact) return rememberNormalization(normalized, catalogExact);
 
-  return normalized
+  return rememberNormalization(normalized, matchable
     .replace(/\bbreasts\b/g, 'breast')
     .replace(/\btomatoes\b/g, 'tomato')
-    .trim();
+    .trim());
+}
+
+export function ingredientVariantKey(value: string): string {
+  const normalized = clean(value);
+  const qualifiers = [
+    /\b(gluten[ -]?free|gf)\b/.test(normalized) ? 'gf' : '',
+    /\b(dairy[ -]?free|non[ -]?dairy)\b/.test(normalized) ? 'df' : '',
+    /\bvegan\b/.test(normalized) ? 'vegan' : '',
+    /\bvegetarian\b/.test(normalized) ? 'vegetarian' : '',
+  ].filter(Boolean).join(':');
+  return `${normalizeIngredient(value)}::${qualifiers}`;
 }
 
 export function displayIngredient(value: string): string {
