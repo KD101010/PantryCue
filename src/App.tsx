@@ -295,7 +295,7 @@ function Onboarding({ profile, onComplete }: { profile: UserProfile; onComplete:
     <div className="onboarding-shell">
       <div className="onboarding-card">
         <div className="onboarding-brand">
-          <img src="/pantrycue-logo.png" alt="PantryCue" />
+          <img src={`${import.meta.env.BASE_URL}pantrycue-logo.png`} alt="PantryCue" />
           <h1>PantryCue</h1>
           <p>Cook what you have.</p>
         </div>

@@ -1,0 +1,22 @@
+PantryCue GitHub Pages deployment fix
+
+Upload the CONTENTS of this folder into the root of KD101010/PantryCue.
+
+These files intentionally replace:
+- vite.config.ts
+- index.html
+- public/manifest.webmanifest
+- src/App.tsx
+- src/components/Brand.tsx
+
+And add:
+- .github/workflows/deploy-pages.yml
+
+Commit message:
+PantryCue v0.1 - Configure GitHub Pages deployment
+
+After committing:
+1. Keep Settings > Pages > Source set to GitHub Actions.
+2. Open the Actions tab.
+3. Wait for "Deploy PantryCue to GitHub Pages" to finish.
+4. The expected site URL is https://kd101010.github.io/pantrycue/
