@@ -22,6 +22,7 @@
 - Barcode normalization dropping important gluten-free, dairy-free, or vegan labels
 - Optional ingredients appearing as if they were available
 - Generic and dietary versions of the same food being incorrectly deduplicated
+- Fractional ingredient amounts displaying incorrectly after serving-size changes
 
 ### Changed
 
