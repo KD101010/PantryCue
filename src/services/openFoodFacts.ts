@@ -1,6 +1,25 @@
 import type { BarcodeProduct } from '../types';
 import { normalizeIngredient } from '../lib/ingredients';
 
+export function barcodeIngredientName(value: string): string {
+  const normalized = normalizeIngredient(value);
+  const productHints: Array<[RegExp, string]> = [
+    [/\b(spaghetti|penne|fettuccine|linguine|rotini|macaroni|pasta)\b(?!\s+sauce)/i, 'pasta'],
+    [/\bmarinara|pasta sauce|spaghetti sauce\b/i, 'marinara sauce'],
+    [/\bcheddar\b/i, 'cheddar cheese'],
+    [/\bmozzarella\b/i, 'mozzarella cheese'],
+    [/\bparmesan\b/i, 'parmesan cheese'],
+  ];
+  const hinted = productHints.find(([pattern]) => pattern.test(value))?.[1];
+  const base = hinted ?? (normalized && normalized.length < 45 ? normalized : value.trim());
+  const qualifiers = [
+    /\b(gluten[ -]?free|gf)\b/i.test(value) ? 'gluten-free' : '',
+    /\b(dairy[ -]?free|non[ -]?dairy)\b/i.test(value) ? 'dairy-free' : '',
+    /\bvegan\b/i.test(value) ? 'vegan' : '',
+  ].filter(Boolean);
+  return [...qualifiers, base].join(' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
 export async function lookupBarcode(barcode: string): Promise<BarcodeProduct | null> {
   const cleaned = barcode.replace(/\D/g, '');
   if (!cleaned) return null;
@@ -19,12 +38,9 @@ export async function lookupBarcode(barcode: string): Promise<BarcodeProduct | n
   const name = rawName || fallback;
   if (!name) return null;
 
-  const normalized = normalizeIngredient(name);
-  const displayName = normalized && normalized.length < 45 ? normalized : name;
-
   return {
     barcode: cleaned,
-    name: displayName.replace(/\b\w/g, (letter) => letter.toUpperCase()),
+    name: barcodeIngredientName(name),
     brand: String(data.product.brands || '').split(',')[0]?.trim() || undefined,
     imageUrl: data.product.image_front_small_url || undefined,
   };

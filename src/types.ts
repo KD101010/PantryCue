@@ -50,6 +50,7 @@ export interface RecipeIngredient {
   optional?: boolean;
   pantryStaple?: boolean;
   substitutes?: SubstituteOption[];
+  dietaryRequirements?: DietaryPreference[];
 }
 
 export interface Recipe {
@@ -65,6 +66,15 @@ export interface Recipe {
   ingredients: RecipeIngredient[];
   steps: string[];
   equipment?: string[];
+  adaptedFor?: DietaryPreference[];
+  dietaryNotes?: string[];
+}
+
+export interface CookingGuideStep {
+  phase: 'Prep' | 'Cook' | 'Finish' | 'Serve';
+  title: string;
+  instruction: string;
+  tip?: string;
 }
 
 export interface RecipeMatch {

@@ -1,24 +1,48 @@
 import { pantryStaples } from '../data/ingredientCatalog';
 import { substitutionLibrary } from '../data/substitutions';
 import type { DietaryPreference, PantryItem, Recipe, RecipeIngredient, RecipeMatch, SubstituteOption } from '../types';
+import { adaptRecipeForPreferences } from './dietary';
 import { normalizeIngredient } from './ingredients';
 
 const assumedStaples = new Set(pantryStaples.map(normalizeIngredient));
-
-function pantrySetFor(items: PantryItem[]): Set<string> {
-  return new Set(items.map((item) => item.normalized));
-}
 
 export function ingredientKeys(ingredient: RecipeIngredient): string[] {
   return [ingredient.name, ...(ingredient.aliases ?? [])].map(normalizeIngredient);
 }
 
-export function pantryHas(pantrySet: Set<string>, ingredient: RecipeIngredient): boolean {
+function itemMeetsDietaryRequirements(item: PantryItem, ingredient: RecipeIngredient): boolean {
+  const requirements = ingredient.dietaryRequirements ?? [];
+  const name = item.name.toLowerCase();
+  return requirements.every((requirement) => {
+    if (requirement === 'gluten-free') {
+      return /\b(gluten[ -]?free|gf)\b/.test(name) || /\b(rice noodles?|corn tortillas?)\b/.test(name);
+    }
+    if (requirement === 'dairy-free') {
+      return /\b(dairy[ -]?free|non[ -]?dairy|vegan|plant[ -]?based|oat milk|soy milk|rice milk|coconut milk)\b/.test(name);
+    }
+    if (requirement === 'nut-free') return !/\b(peanut|almond|cashew|walnut|pecan|hazelnut|pistachio|macadamia)\b/.test(name);
+    if (requirement === 'vegetarian') return /\bvegetarian\b/.test(name);
+    if (requirement === 'vegan') return /\bvegan\b/.test(name);
+    return true;
+  });
+}
+
+function actualPantryHas(items: PantryItem[], ingredient: RecipeIngredient): boolean {
+  const keys = new Set(ingredientKeys(ingredient));
+  return items.some((item) => (keys.has(item.normalized) || keys.has(normalizeIngredient(item.name))) && itemMeetsDietaryRequirements(item, ingredient));
+}
+
+export function pantryHas(items: PantryItem[], ingredient: RecipeIngredient): boolean {
   if (ingredient.pantryStaple && assumedStaples.has(normalizeIngredient(ingredient.name))) return true;
-  return ingredientKeys(ingredient).some((key) => pantrySet.has(key));
+  return actualPantryHas(items, ingredient);
+}
+
+function pantryKeys(items: PantryItem[]): Set<string> {
+  return new Set(items.flatMap((item) => [item.normalized, normalizeIngredient(item.name)]));
 }
 
 function substitutionsFor(ingredient: RecipeIngredient): SubstituteOption[] {
+  if (ingredient.dietaryRequirements?.length) return ingredient.substitutes ?? [];
   const canonical = normalizeIngredient(ingredient.name);
   const recipeSpecific = ingredient.substitutes ?? [];
   const library = substitutionLibrary[canonical] ?? [];
@@ -39,7 +63,7 @@ function optionIsAvailable(option: SubstituteOption, pantrySet: Set<string>): bo
 }
 
 export function availableSubstitutes(items: PantryItem[], ingredient: RecipeIngredient): SubstituteOption[] {
-  const set = pantrySetFor(items);
+  const set = pantryKeys(items);
   return substitutionsFor(ingredient).filter((option) => optionIsAvailable(option, set));
 }
 
@@ -48,15 +72,16 @@ export function matchRecipes(
   recipes: Recipe[],
   diets: DietaryPreference[] = [],
 ): RecipeMatch[] {
-  const pantrySet = pantrySetFor(pantry);
-  const useSoonSet = new Set(pantry.filter((item) => item.useSoon).map((item) => item.normalized));
+  const pantrySet = pantryKeys(pantry);
+  const useSoonItems = pantry.filter((item) => item.useSoon);
 
   return recipes
-    .filter((recipe) => diets.every((diet) => recipe.diets.includes(diet)))
+    .map((recipe) => adaptRecipeForPreferences(recipe, diets))
+    .filter((recipe): recipe is Recipe => Boolean(recipe))
     .map((recipe) => {
       const required = recipe.ingredients.filter((ingredient) => !ingredient.optional);
-      const available = recipe.ingredients.filter((ingredient) => pantryHas(pantrySet, ingredient));
-      const directMissing = required.filter((ingredient) => !pantryHas(pantrySet, ingredient));
+      const available = recipe.ingredients.filter((ingredient) => pantryHas(pantry, ingredient));
+      const directMissing = required.filter((ingredient) => !pantryHas(pantry, ingredient));
       const availableSubstitutions: Record<string, SubstituteOption[]> = {};
 
       const missing = directMissing.filter((ingredient) => {
@@ -68,11 +93,11 @@ export function matchRecipes(
         return true;
       });
 
-      const optionalMissing = recipe.ingredients.filter((ingredient) => ingredient.optional && !pantryHas(pantrySet, ingredient));
+      const optionalMissing = recipe.ingredients.filter((ingredient) => ingredient.optional && !pantryHas(pantry, ingredient));
       const satisfiedRequired = required.length - missing.length;
       const score = required.length ? satisfiedRequired / required.length : 1;
       const pantryScore = recipe.ingredients.length ? available.length / recipe.ingredients.length : 1;
-      const usesSoon = recipe.ingredients.filter((ingredient) => ingredientKeys(ingredient).some((key) => useSoonSet.has(key))).length;
+      const usesSoon = recipe.ingredients.filter((ingredient) => actualPantryHas(useSoonItems, ingredient)).length;
 
       return {
         recipe,

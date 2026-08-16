@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BarcodeScanner } from './components/BarcodeScanner';
 import { BottomNav } from './components/BottomNav';
 import { Brand } from './components/Brand';
@@ -8,9 +8,12 @@ import { RecipeCard } from './components/RecipeCard';
 import { pantryStaples } from './data/ingredientCatalog';
 import { recipes, recipeCount } from './data/recipes';
 import { usePersistentState } from './hooks/usePersistentState';
-import { displayIngredient, localIngredientSearch, normalizeIngredient, splitIngredientInput } from './lib/ingredients';
-import { availableSubstitutes, matchRecipes, scaleAmount } from './lib/matching';
+import { buildCookingGuide, inferEquipment } from './lib/cooking';
+import { dietLabel } from './lib/dietary';
+import { displayIngredient, ingredientVariantKey, localIngredientSearch, normalizeIngredient, splitIngredientInput } from './lib/ingredients';
+import { availableSubstitutes, matchRecipes, pantryHas, scaleAmount } from './lib/matching';
 import { lookupBarcode } from './services/openFoodFacts';
+import { APP_VERSION } from './version';
 import type {
   DietaryPreference,
   GroceryItem,
@@ -75,6 +78,7 @@ export default function App() {
   const [tab, setTab] = useState<Tab>('home');
   const [selected, setSelected] = useState<RecipeMatch | null>(null);
   const [cookStep, setCookStep] = useState<number | null>(null);
+  const [cookServings, setCookServings] = useState(profile.householdSize || 4);
   const [cookIngredientsOpen, setCookIngredientsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [barcodeOpen, setBarcodeOpen] = useState(false);
@@ -92,13 +96,14 @@ export default function App() {
   }, []);
 
   const addIngredients = useCallback((values: string[], zone: StorageZone) => {
-    const existing = new Set(pantry.map((item) => item.normalized));
+    const existing = new Set(pantry.map((item) => ingredientVariantKey(item.name)));
     const additions: PantryItem[] = [];
     for (const raw of values) {
       const trimmed = raw.trim();
       const normalized = normalizeIngredient(trimmed);
-      if (!trimmed || !normalized || existing.has(normalized)) continue;
-      existing.add(normalized);
+      const variantKey = ingredientVariantKey(trimmed);
+      if (!trimmed || !normalized || existing.has(variantKey)) continue;
+      existing.add(variantKey);
       additions.push(createPantryItem(trimmed, zone));
     }
     if (!additions.length) {
@@ -110,9 +115,9 @@ export default function App() {
   }, [announce, pantry, setPantry]);
 
   const addMissingToGrocery = useCallback((match: RecipeMatch) => {
-    const existing = new Set(grocery.map((item) => item.normalized));
+    const existing = new Set(grocery.map((item) => ingredientVariantKey(item.name)));
     const additions = match.missing
-      .filter((ingredient) => !existing.has(normalizeIngredient(ingredient.name)))
+      .filter((ingredient) => !existing.has(ingredientVariantKey(ingredient.name)))
       .map((ingredient) => createGroceryItem(ingredient.name, match.recipe.id));
     if (!additions.length) {
       announce('The missing items are already on your grocery list.');
@@ -132,11 +137,11 @@ export default function App() {
     try {
       const product = await lookupBarcode(barcode);
       if (!product) {
+        setBarcodeOpen(false);
         announce('I could not find that barcode. Add the item by name instead.');
         return;
       }
-      const normalized = normalizeIngredient(product.name);
-      if (pantry.some((item) => item.normalized === normalized)) {
+      if (pantry.some((item) => ingredientVariantKey(item.name) === ingredientVariantKey(product.name))) {
         announce(`${product.name} is already in your kitchen.`);
         setBarcodeOpen(false);
         return;
@@ -145,6 +150,7 @@ export default function App() {
       setBarcodeOpen(false);
       announce(`${product.name} added.`);
     } catch {
+      setBarcodeOpen(false);
       announce('Barcode lookup is unavailable right now. Try entering the item by name.');
     } finally {
       setBarcodeLoading(false);
@@ -172,7 +178,7 @@ export default function App() {
         onStep={setCookStep}
         ingredientsOpen={cookIngredientsOpen}
         onIngredientsOpen={setCookIngredientsOpen}
-        householdSize={profile.householdSize}
+        servings={cookServings}
         onClose={() => {
           setCookStep(null);
           setCookIngredientsOpen(false);
@@ -238,7 +244,10 @@ export default function App() {
           onClose={() => setSelected(null)}
           onToggleSaved={() => toggleSaved(selected.recipe.id)}
           onAddMissing={() => addMissingToGrocery(selected)}
-          onCook={() => setCookStep(0)}
+          onCook={(servings) => {
+            setCookServings(servings);
+            setCookStep(0);
+          }}
         />
       )}
 
@@ -456,7 +465,7 @@ function HomeScreen({
           </button>
           <button onClick={onOpenPhoto}>
             <span className="quick-icon"><Icon name="camera" size={20} /></span>
-            <span>Photo scan</span><small>Beta</small>
+            <span>Photo + confirm</span><small>Beta</small>
           </button>
         </div>
       </div>
@@ -466,6 +475,13 @@ function HomeScreen({
         <span><strong>{pantry.length} item{pantry.length === 1 ? '' : 's'} in your kitchen</strong><small>{pantry.length ? `${pantry.filter((item) => item.useSoon).length} marked use soon` : 'Add a few foods to get personalized matches'}</small></span>
         <Icon name="chevron" size={19} />
       </button>
+
+      {profile.diets.length > 0 && (
+        <div className="dietary-banner">
+          <Icon name="check" size={18} />
+          <span><strong>Cooking for {profile.diets.map(dietLabel).join(' + ')}</strong><small>Compatible meals are adjusted for you. PantryCue still requires clearly labeled specialty products where needed.</small></span>
+        </div>
+      )}
 
       {pantry.length === 0 ? (
         <EmptyHome onTry={(items) => onAddIngredients(items, 'pantry')} />
@@ -720,10 +736,12 @@ function RecipeSheet({ match, pantry, saved, defaultServings, onClose, onToggleS
   onClose: () => void;
   onToggleSaved: () => void;
   onAddMissing: () => void;
-  onCook: () => void;
+  onCook: (servings: number) => void;
 }) {
   const [servings, setServings] = useState(Math.max(1, defaultServings));
   const missingSet = new Set(match.missing.map((ingredient) => normalizeIngredient(ingredient.name)));
+  const guide = useMemo(() => buildCookingGuide(match.recipe), [match.recipe]);
+  const equipment = useMemo(() => inferEquipment(match.recipe), [match.recipe]);
 
   return (
     <div className="recipe-detail-layer">
@@ -741,6 +759,14 @@ function RecipeSheet({ match, pantry, saved, defaultServings, onClose, onToggleS
             <div className="detail-meta"><span><Icon name="clock" size={16} /> {match.recipe.minutes} min</span><span><Icon name="flame" size={16} /> {match.recipe.difficulty}</span><span>{match.recipe.cuisine}</span></div>
           </div>
 
+          {match.recipe.adaptedFor && match.recipe.adaptedFor.length > 0 && (
+            <section className="dietary-fit-card">
+              <Icon name="check" size={19} />
+              <div><strong>Adjusted for {match.recipe.adaptedFor.map(dietLabel).join(' + ')}</strong><span>Ingredient names and matching have been updated for your food preferences.</span></div>
+              {match.recipe.dietaryNotes?.map((note) => <p key={note}>{note}</p>)}
+            </section>
+          )}
+
           <div className="serving-control"><span>Servings</span><div><button onClick={() => setServings((value) => Math.max(1, value - 1))}>−</button><strong>{servings}</strong><button onClick={() => setServings((value) => Math.min(12, value + 1))}>+</button></div></div>
 
           <section className="detail-section">
@@ -748,15 +774,17 @@ function RecipeSheet({ match, pantry, saved, defaultServings, onClose, onToggleS
             <div className="ingredient-list">
               {match.recipe.ingredients.map((ingredient) => {
                 const key = normalizeIngredient(ingredient.name);
-                const directMissing = missingSet.has(key);
+                const hasDirect = pantryHas(pantry, ingredient);
+                const requiredMissing = missingSet.has(key);
                 const substitutes = availableSubstitutes(pantry, ingredient);
-                const usingSub = !directMissing && match.availableSubstitutions[key]?.length > 0;
+                const usingSub = !hasDirect && !requiredMissing && match.availableSubstitutions[key]?.length > 0;
+                const optionalMissing = ingredient.optional && !hasDirect && !usingSub;
                 return (
-                  <div className={`ingredient-row ${directMissing ? 'missing' : ''}`} key={`${ingredient.name}-${ingredient.amount}`}>
-                    <span className="ingredient-state">{directMissing ? '!' : <Icon name="check" size={14} />}</span>
+                  <div className={`ingredient-row ${requiredMissing ? 'missing' : ''} ${optionalMissing ? 'optional-missing' : ''}`} key={`${ingredient.name}-${ingredient.amount}`}>
+                    <span className="ingredient-state">{requiredMissing ? '!' : optionalMissing ? '○' : <Icon name="check" size={14} />}</span>
                     <div><strong>{ingredient.name}{ingredient.optional ? <small> optional</small> : ''}</strong><span>{scaleAmount(ingredient.amount, match.recipe.servings, servings)}</span>
                     {usingSub && <em>Use {match.availableSubstitutions[key][0].label}</em>}
-                    {directMissing && substitutes.length > 0 && <em>Swap: {substitutes[0].label}</em>}</div>
+                    {requiredMissing && substitutes.length > 0 && <em>Swap: {substitutes[0].label}</em>}</div>
                   </div>
                 );
               })}
@@ -769,13 +797,18 @@ function RecipeSheet({ match, pantry, saved, defaultServings, onClose, onToggleS
             <SubstitutionSummary match={match} pantry={pantry} />
           </section>
 
+          <section className="detail-section">
+            <div className="detail-section-heading"><h2>Equipment</h2><span>Set this out first</span></div>
+            <div className="equipment-list">{equipment.map((item) => <span key={item}>{item}</span>)}</div>
+          </section>
+
           <section className="detail-section steps-preview">
-            <div className="detail-section-heading"><h2>How to make it</h2><span>{match.recipe.steps.length} steps</span></div>
-            {match.recipe.steps.slice(0, 3).map((step, index) => <div className="step-preview" key={step}><span>{index + 1}</span><p>{step}</p></div>)}
-            {match.recipe.steps.length > 3 && <p className="more-steps">+ {match.recipe.steps.length - 3} more steps in cooking mode</p>}
+            <div className="detail-section-heading"><h2>How to make it</h2><span>{guide.length} guided steps</span></div>
+            {guide.slice(0, 3).map((guideStep, index) => <div className="step-preview" key={`${guideStep.title}-${index}`}><span>{index + 1}</span><p><strong>{guideStep.title}.</strong> {guideStep.instruction}</p></div>)}
+            {guide.length > 3 && <p className="more-steps">+ {guide.length - 3} more detailed steps in cooking mode</p>}
           </section>
         </div>
-        <div className="recipe-detail-footer"><button className="primary-button full-width" onClick={onCook}>Start cooking <Icon name="chevron" size={18} /></button></div>
+        <div className="recipe-detail-footer"><button className="primary-button full-width" onClick={() => onCook(servings)}>Start cooking <Icon name="chevron" size={18} /></button></div>
       </article>
     </div>
   );
@@ -793,18 +826,20 @@ function SubstitutionSummary({ match }: { match: RecipeMatch; pantry: PantryItem
   return <div className="swap-list">{rows.slice(0, 4).map(({ ingredient, options }) => <div className="swap-card" key={ingredient.name}><div><span>Instead of</span><strong>{ingredient.name}</strong></div><Icon name="chevron" size={17} /><div><span>Use what you have</span><strong>{options[0].label}</strong>{options[0].note && <small>{options[0].note}</small>}</div></div>)}</div>;
 }
 
-function CookingMode({ match, pantry, step, onStep, ingredientsOpen, onIngredientsOpen, householdSize, onClose }: {
+function CookingMode({ match, pantry, step, onStep, ingredientsOpen, onIngredientsOpen, servings, onClose }: {
   match: RecipeMatch;
   pantry: PantryItem[];
   step: number;
   onStep: (step: number) => void;
   ingredientsOpen: boolean;
   onIngredientsOpen: (open: boolean) => void;
-  householdSize: number;
+  servings: number;
   onClose: () => void;
 }) {
-  const total = match.recipe.steps.length;
+  const guide = useMemo(() => buildCookingGuide(match.recipe), [match.recipe]);
+  const total = guide.length;
   const progress = ((step + 1) / total) * 100;
+  const current = guide[Math.min(step, total - 1)];
 
   return (
     <main className="cooking-mode">
@@ -815,8 +850,11 @@ function CookingMode({ match, pantry, step, onStep, ingredientsOpen, onIngredien
       </header>
       <div className="cook-progress"><span style={{ width: `${progress}%` }} /></div>
       <section className="cook-step">
+        <div className="cook-phase">{current.phase}</div>
         <div className="cook-step-number"><span>Step</span><strong>{step + 1}</strong><small>of {total}</small></div>
-        <p>{match.recipe.steps[step]}</p>
+        <h1>{current.title}</h1>
+        <p>{current.instruction}</p>
+        {current.tip && <aside className="cook-tip"><Icon name="info" size={18} /><span>{current.tip}</span></aside>}
         {step === total - 1 && <div className="finish-note"><Icon name="sparkle" size={22} /><strong>That is it.</strong><span>Plate it up and enjoy.</span></div>}
       </section>
       <footer className="cooking-footer">
@@ -826,8 +864,8 @@ function CookingMode({ match, pantry, step, onStep, ingredientsOpen, onIngredien
       {ingredientsOpen && (
         <Modal title="Ingredients" onClose={() => onIngredientsOpen(false)}>
           <div className="cook-ingredient-list">{match.recipe.ingredients.map((ingredient) => {
-            const has = pantry.some((item) => item.normalized === normalizeIngredient(ingredient.name));
-            return <div key={ingredient.name}><span className={has ? 'have' : ''}>{has && <Icon name="check" size={13} />}</span><strong>{ingredient.name}</strong><small>{scaleAmount(ingredient.amount, match.recipe.servings, householdSize)}</small></div>;
+            const has = pantryHas(pantry, ingredient);
+            return <div key={ingredient.name}><span className={has ? 'have' : ''}>{has && <Icon name="check" size={13} />}</span><strong>{ingredient.name}</strong><small>{scaleAmount(ingredient.amount, match.recipe.servings, servings)}</small></div>;
           })}</div>
         </Modal>
       )}
@@ -848,7 +886,7 @@ function SettingsSheet({ profile, setProfile, onClose, onReset }: {
       <div className="settings-group"><span className="field-heading">Usually cooking for</span><div className="number-picker compact">{[1,2,3,4,5,6].map((number) => <button key={number} className={profile.householdSize === number ? 'active' : ''} onClick={() => setProfile((current) => ({ ...current, householdSize: number }))}>{number}{number === 6 ? '+' : ''}</button>)}</div></div>
       <div className="settings-group"><span className="field-heading">Weeknight time target</span><div className="time-chips">{[20,30,45,60].map((minutes) => <button key={minutes} className={profile.weeknightMinutes === minutes ? 'active' : ''} onClick={() => setProfile((current) => ({ ...current, weeknightMinutes: minutes }))}>{minutes} min</button>)}</div></div>
       <div className="settings-group"><span className="field-heading">Food preferences</span><div className="choice-chips">{dietOptions.map((option) => <button key={option.value} className={profile.diets.includes(option.value) ? 'choice-chip active' : 'choice-chip'} onClick={() => toggleDiet(option.value)}>{profile.diets.includes(option.value) && <Icon name="check" size={14} />}{option.label}</button>)}</div></div>
-      <div className="settings-about"><Brand /><p>Family beta. Recipes in this build are original PantryCue test recipes. Pantry staples currently assumed: {pantryStaples.slice(0, 7).join(', ')}, and a few other basics.</p></div>
+      <div className="settings-about"><Brand /><p>Version {APP_VERSION} family beta with {recipeCount} original PantryCue recipes plus dietary adaptations. Pantry staples currently assumed: {pantryStaples.slice(0, 7).join(', ')}, and a few other basics.</p></div>
       <button className="danger-button" onClick={onReset}><Icon name="trash" size={17} /> Reset this device</button>
     </Modal>
   );
@@ -858,16 +896,37 @@ function PhotoScanBeta({ onClose, onAdd }: { onClose: () => void; onAdd: (items:
   const [preview, setPreview] = useState('');
   const [entry, setEntry] = useState('');
   const [zone, setZone] = useState<StorageZone>('fridge');
+  const [error, setError] = useState('');
+
+  useEffect(() => () => {
+    if (preview) URL.revokeObjectURL(preview);
+  }, [preview]);
+
+  const choosePhoto = (file?: File) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setError('Choose a photo file from your camera or photo library.');
+      return;
+    }
+    if (file.size > 15 * 1024 * 1024) {
+      setError('That photo is larger than 15 MB. Choose a smaller image and try again.');
+      return;
+    }
+    setError('');
+    setPreview(URL.createObjectURL(file));
+  };
 
   return (
-    <Modal title="Photo scan beta" onClose={onClose}>
+    <Modal title="Photo + confirm beta" onClose={onClose}>
       <div className="photo-beta">
-        {preview ? <img src={preview} alt="Kitchen scan preview" /> : <div className="photo-placeholder"><Icon name="camera" size={38} /><strong>Scan your fridge or pantry</strong><span>Take one clear photo. PantryCue will always ask you to confirm foods before they are added.</span></div>}
+        <p className="inline-note photo-beta-note"><Icon name="info" size={17} /> This family beta does not automatically identify food from a photo yet. The photo stays on this device and gives you a reference while you confirm each item, so PantryCue never guesses incorrectly.</p>
+        {preview ? <img src={preview} alt="Kitchen photo ready for item confirmation" /> : <div className="photo-placeholder"><Icon name="camera" size={38} /><strong>Photograph your fridge or pantry</strong><span>Take one clear photo, then list the foods you see before anything is added.</span></div>}
         <label className="secondary-button full-width file-input"><Icon name="camera" size={18} /> {preview ? 'Take a different photo' : 'Take or choose a photo'}<input type="file" accept="image/*" capture="environment" onChange={(event) => {
-          const file = event.target.files?.[0];
-          if (file) setPreview(URL.createObjectURL(file));
+          choosePhoto(event.target.files?.[0]);
+          event.currentTarget.value = '';
         }} /></label>
-        {preview && <div className="photo-manual-confirm"><div className="beta-label"><Icon name="sparkle" size={15} /> Safe beta flow</div><h3>Confirm what is in the photo</h3><p>Automatic vision recognition is intentionally not guessing in this family build. Type or speak the foods you can see, separated by commas. The future vision service plugs into this exact confirmation step.</p><div className="zone-select mini">{(['fridge','pantry','freezer'] as StorageZone[]).map((value) => <button key={value} className={zone === value ? 'active' : ''} onClick={() => setZone(value)}><Icon name={zoneMeta[value].icon} size={14} /> {zoneMeta[value].label}</button>)}</div><textarea value={entry} onChange={(event) => setEntry(event.target.value)} placeholder="Milk, eggs, cheddar cheese, broccoli..." /><button className="primary-button full-width" disabled={!entry.trim()} onClick={() => onAdd(splitIngredientInput(entry), zone)}>Confirm and add</button></div>}
+        {error && <p className="inline-note" role="alert"><Icon name="info" size={17} /> {error}</p>}
+        {preview && <div className="photo-manual-confirm"><div className="beta-label"><Icon name="sparkle" size={15} /> Confirm before adding</div><h3>What foods can you see?</h3><p>Type the foods separated by commas. Include important labels such as “gluten-free pasta” or “dairy-free milk” so dietary matching stays accurate.</p><div className="zone-select mini">{(['fridge','pantry','freezer'] as StorageZone[]).map((value) => <button key={value} className={zone === value ? 'active' : ''} onClick={() => setZone(value)}><Icon name={zoneMeta[value].icon} size={14} /> {zoneMeta[value].label}</button>)}</div><textarea value={entry} onChange={(event) => setEntry(event.target.value)} placeholder="Gluten-free pasta, ground beef, marinara sauce..." /><button className="primary-button full-width" disabled={!entry.trim()} onClick={() => onAdd(splitIngredientInput(entry), zone)}>Confirm and add</button></div>}
       </div>
     </Modal>
   );

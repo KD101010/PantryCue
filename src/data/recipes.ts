@@ -1,4 +1,5 @@
 import type { DietaryPreference, Recipe, RecipeIngredient, SubstituteOption } from '../types';
+import { expandedRecipes } from './expandedRecipes';
 
 const i = (
   name: string,
@@ -25,7 +26,7 @@ const customSub = (label: string, requires: string[], note?: string): Substitute
 const saltPepper = [i('Salt', 'to taste', { pantryStaple: true }), i('Black pepper', 'to taste', { pantryStaple: true })];
 const oil = i('Olive oil', '1 tbsp', { pantryStaple: true });
 
-export const recipes: Recipe[] = [
+const coreRecipes: Recipe[] = [
   r('creamy-garlic-chicken-pasta','Creamy Garlic Chicken Pasta','Tender chicken and pasta in a simple creamy garlic sauce.',30,4,'American',['Weeknight','Comfort food'],[
     i('Chicken breast','1 lb'),i('Pasta','12 oz'),i('Heavy cream','1 cup'),i('Parmesan cheese','1/2 cup'),i('Garlic','3 cloves'),oil,...saltPepper
   ],[
@@ -129,11 +130,14 @@ export const recipes: Recipe[] = [
   r('spaghetti-meat-sauce','Spaghetti with Meat Sauce','A dependable family pasta with a rich beef and tomato sauce.',35,6,'Italian-American',['Family friendly','Classic'],[
     i('Ground beef','1 lb'),i('Spaghetti','16 oz',{aliases:['pasta']}),i('Marinara sauce','24 oz'),i('Onion','1/2',{optional:true}),i('Garlic','2 cloves'),i('Italian seasoning','1 tsp'),i('Parmesan cheese','1/2 cup',{optional:true}),...saltPepper
   ],[
-    'Cook spaghetti in salted water until just tender.',
-    'Brown beef with onion in a large skillet. Drain excess grease if needed.',
-    'Add garlic and Italian seasoning, then stir in marinara sauce.',
-    'Simmer for about 10 minutes. Taste and season.',
-    'Serve sauce over spaghetti with Parmesan if you have it.'
+    'Fill a large pot with 4 to 6 quarts of water, cover it, and bring it to a rolling boil over high heat while you start the sauce.',
+    'Dice the optional onion and mince the garlic. Heat a large skillet over medium-high heat for 1 to 2 minutes.',
+    'Add the ground beef and onion. Break the beef into small pieces and cook for 6 to 8 minutes, until browned with no pink remaining and the center reaches 160°F. Carefully spoon off excess grease.',
+    'Lower the skillet to medium. Add the garlic and Italian seasoning and stir for 30 seconds, just until fragrant.',
+    'Pour in the marinara, stir well, and bring it to a gentle simmer. Reduce to medium-low and cook uncovered for 10 to 15 minutes, stirring from the bottom every few minutes.',
+    'Salt the boiling water, add the spaghetti, and stir during the first 30 seconds. Follow the package time and taste one strand a minute early. Reserve 1/2 cup pasta water, then drain without rinsing.',
+    'Toss the drained spaghetti with enough sauce to coat it. If the sauce is too thick, stir in reserved pasta water one tablespoon at a time. Taste and adjust salt and pepper.',
+    'Divide among warm bowls and add optional Parmesan. Serve immediately while the pasta and sauce are hot.'
   ]),
   r('meatloaf','Simple Homestyle Meatloaf','Tender meatloaf with a sweet-savory ketchup glaze.',60,6,'American',['Comfort food','Make ahead'],[
     i('Ground beef','2 lb'),i('Eggs','2'),i('Breadcrumbs','1 cup'),i('Milk','1/2 cup'),i('Onion','1/2'),i('Ketchup','1/2 cup'),i('Worcestershire sauce','1 tbsp'),i('Garlic powder','1 tsp',{pantryStaple:true}),...saltPepper
@@ -589,7 +593,7 @@ export const recipes: Recipe[] = [
     'Cover and cook until whites are set and yolks are done to your liking.'
   ],['vegetarian','pork-free','nut-free','gluten-free','dairy-free']),
   r('white-bean-pasta','Garlic White Bean Pasta','Creamy white beans and pasta with garlic and Parmesan.',25,4,'Italian-inspired',['Pantry meal','Vegetarian'],[
-    i('Pasta','12 oz'),i('White beans','2 cans'),i('Garlic','3 cloves'),i('Chicken broth','1 cup',{aliases:['vegetable broth']}),i('Parmesan cheese','1/2 cup'),i('Spinach','2 cups',{optional:true}),oil,...saltPepper
+    i('Pasta','12 oz'),i('White beans','2 cans'),i('Garlic','3 cloves'),i('Vegetable broth','1 cup'),i('Parmesan cheese','1/2 cup'),i('Spinach','2 cups',{optional:true}),oil,...saltPepper
   ],[
     'Cook pasta until just tender and reserve some cooking water.',
     'Cook garlic briefly in olive oil, then add drained white beans and broth.',
@@ -646,5 +650,7 @@ export const recipes: Recipe[] = [
     'Spoon yogurt sauce over the filling and serve.'
   ]),
 ];
+
+export const recipes: Recipe[] = [...coreRecipes, ...expandedRecipes];
 
 export const recipeCount = recipes.length;
