@@ -4,7 +4,7 @@ import type { PantryItem, StorageZone } from '../types';
 import { buildCookingGuide, inferEquipment } from './cooking';
 import { adaptRecipeForPreferences } from './dietary';
 import { ingredientVariantKey, normalizeIngredient } from './ingredients';
-import { matchRecipes } from './matching';
+import { matchRecipes, scaleAmount } from './matching';
 import { barcodeIngredientName } from '../services/openFoodFacts';
 
 function pantry(...names: string[]): PantryItem[] {
@@ -80,6 +80,14 @@ describe('dietary recipe matching', () => {
 });
 
 describe('recipe catalog and cooking guidance', () => {
+  it('scales whole numbers, fractions, mixed numbers, and ranges cleanly', () => {
+    expect(scaleAmount('1/2 cup', 6, 4)).toBe('1/3 cup');
+    expect(scaleAmount('1 1/2 lb', 6, 4)).toBe('1 lb');
+    expect(scaleAmount('2 to 3 tbsp', 4, 2)).toBe('1 to 1 1/2 tbsp');
+    expect(scaleAmount('24 oz', 6, 4)).toBe('16 oz');
+    expect(scaleAmount('to taste', 6, 4)).toBe('to taste');
+  });
+
   it('contains 110 unique base recipes', () => {
     expect(recipeCount).toBe(110);
     expect(new Set(recipes.map((recipe) => recipe.id)).size).toBe(recipeCount);
